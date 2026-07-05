@@ -14,21 +14,21 @@ if ($p === 'm3u') {
 
     $path = $scheme . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
 
+    $m3uurl = "https://cdn.qd.je/mytv0.m3u";
 
-$m3uurl = "https://cdn.qd.je/mytv0.m3u";
+    $m3u = file_get_contents($m3uurl);
 
-$m3u = file_get_contents($m3uurl);
+    // 动态替换老的接口地址为当前 Vercel 的实际请求地址
+    $m3u = preg_replace(
+        '#http://[^/]+/mytv\.php#',
+        $path,
+        $m3u
+    );
 
-$m3u = preg_replace(
-    '#http://[^/]+/mytv\.php#',
-    $path,
-    $m3u
-);
+    header("Content-Type: text/plain; charset=utf-8");
 
-header("Content-Type: text/plain; charset=utf-8");
-
-echo $m3u;
-exit;
+    echo $m3u;
+    exit;
 }
 
 if (empty($request_url) && empty($p)) {
@@ -215,7 +215,8 @@ if (in_array($http_code, [301, 302, 303, 307, 308]) && isset($response_headers['
         }
         $location = $base . '/' . ltrim($location, '/');
     }
-    header("Location: mytv.php?url=" . urlencode($location), true, $http_code);
+    // 使用相对路径进行 302 代理重定向
+    header("Location: ?url=" . urlencode($location), true, $http_code);
     exit();
 }
 
@@ -252,11 +253,11 @@ if ($is_m3u8) {
         $base_root .= ':' . $parsed_url['port'];
     }
 
-    $path = $parsed_url['path'] ?? '/';
-    if (substr($path, -1) === '/') {
-        $base_dir = $base_root . $path;
+    $path_url = $parsed_url['path'] ?? '/';
+    if (substr($path_url, -1) === '/') {
+        $base_dir = $base_root . $path_url;
     } else {
-        $base_dir = $base_root . dirname($path) . '/';
+        $base_dir = $base_root . dirname($path_url) . '/';
     }
 
     // ================= m3u8 安全逐行解析 =================
@@ -278,7 +279,8 @@ if ($is_m3u8) {
                 function ($m) use ($base_root, $base_dir) {
                     $uri = $m[1];
 
-                    if (strpos($uri, 'mytv.php?url=') !== false) {
+                    // 如果已经带了 url 参数，不再重复处理
+                    if (strpos($uri, '?url=') !== false) {
                         return 'URI="' . $uri . '"';
                     }
 
@@ -290,7 +292,7 @@ if ($is_m3u8) {
                         $url = $base_dir . $uri;
                     }
 
-                    return 'URI="mytv.php?url=' . urlencode($url) . '"';
+                    return 'URI="?url=' . urlencode($url) . '"';
                 },
                 $line
             );
@@ -306,7 +308,7 @@ if ($is_m3u8) {
         }
 
         // 已代理的不重复处理
-        if (strpos($line, 'mytv.php?url=') !== false) {
+        if (strpos($line, '?url=') !== false) {
             $out[] = $line;
             continue;
         }
@@ -320,7 +322,8 @@ if ($is_m3u8) {
             $url = $base_dir . $line;
         }
 
-        $out[] = 'mytv.php?url=' . urlencode($url);
+        // 使用相对路径代理
+        $out[] = '?url=' . urlencode($url);
     }
 
     $body = implode("\n", $out);
